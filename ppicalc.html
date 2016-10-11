@@ -1,0 +1,560 @@
+<html>
+	<head>
+		<meta charset="utf-8">
+		<title>PPI Calculator</title>
+		<style type="text/css">
+			body { font-family: Trebuchet MS, Gill Sans, Futura, Sans, Verdana, Arial, Helvetica; }
+			ul {
+				font-size: 0.85em;
+				margin: 0 0 0 0.3em;
+				padding: 0;
+				list-style-position: inside;
+			}
+			li {
+				padding-left: 1em;
+				text-indent: -1em;
+			}
+
+			.subhead { font-size: 0.5em; white-space: pre-wrap; }
+
+			/* form */
+			fieldset { display: inline-block; }
+			input { text-align: right; }
+			#save { float: right; }
+			#formular { column-count: 2; column-gap: 2em; }
+
+			/* common section */
+			h3 { font-size: 1em; margin-bottom: 0.3em; }
+			#common-screen-sizes > ul { column-width: 20.5em; column-gap: 1em; }
+			#common-resolutions,
+			#common-display-sizes { float: right; }
+			#common-display-sizes { margin: 0 1.5em; }
+
+			/* footer */
+			body { position: relative; padding-bottom: 2.5em; }
+			footer {
+				position: absolute; 
+				bottom: 0%;
+				width: 100%;
+				display: flex;
+    		justify-content: space-between;
+    		border-top: solid 1px silver;
+    		padding-top: 0.5em;
+    	}
+		</style>
+		<script type="text/javascript">
+		/* <![CDATA[ */
+
+		/** decimal rounding util */
+		function round(value, digits) {
+			var factor = Math.pow(10, digits);
+			return Math.round(value * factor) / factor;
+		}
+
+		function newSize(x,y) {
+			return {
+				x: x,
+				y: y,
+				sq: x*y
+			};
+		}
+
+		/** calculate ppi metrics */
+		function calcSize(diagonal, ratio) {
+			var y = Math.sqrt( Math.pow(diagonal,2) / ( 1 + Math.pow(ratio, 2) ));
+			var x = y * ratio;
+
+			return newSize(x,y)
+		}
+
+		/** common aspect ratios we recognize */
+		var car = { 
+			"1:1" : 1,
+			"5:4" : 5/4,
+			"4:3" : 4/3,
+			"Academy ratio 1.375:1" : 1.375,
+			"√2"  : 1.41,
+			"IMAX 1.43:1" : 1.43,
+			"3:2" : 3/2,
+			"5:3" : 5/3,
+			"14:9" : 14/9,
+			"16:10" : 16/10,
+			"16:9" : 16/9,
+			"17:9" : 17/9,
+			"21:9" : 21/9,
+			"CinemaScope 2.35:1" : 2.35,
+			"Cinemara 2.59:1" : 2.59,
+			"Ultra Panavision 70 2.75:1" : 2.75,
+			"MGM 65 2.76:1" : 2.76,
+		};
+
+		function formatAspectRatio(ratio) {
+			for (ratio_name in car) {
+				if (Math.abs(car[ratio_name]/ratio-1) < 0.01)  // 1% error margin is ok
+					return ratio_name;
+			}
+			// this aspect ratio is unknown.
+			return ratio > 1 
+					? round(ratio, 2) + ":1"
+					: "1:" + round(1/ratio, 2);
+		}
+
+		// {size{x,y},density} // {ratio,diagonal,density} // {res{x,y},diagonal} // 
+		var metrics = {};
+
+		function newMetrics(resolution,diagonal,ratio,size,density) {
+			return {
+				resolution : resolution,
+				      size : size,
+				  diagonal : diagonal,
+				   density : density,
+				     ratio : ratio,
+
+				  dotpitch : size.x / resolution.x
+			};
+		}
+
+		function fillForm(metrics) {
+			document.getElementById('metricdiag').textContent = isNaN(metrics.diagonal)
+					? ""
+					: "(" + round(2.54*metrics.diagonal,2) + "cm)";
+
+			document.getElementById('aspect-ratio').value = isNaN(metrics.ratio) ? "" : formatAspectRatio(metrics.ratio);
+			document.getElementById('density').value = isNaN(metrics.density.x) ? "" : round(metrics.density.x,2);
+			document.getElementById('ppi2').innerHTML = isNaN(metrics.density.sq)
+					? "" 
+					: ", " + round(25.4*metrics.dotpitch,4) + 'mm <a href="https://en.wikipedia.org/wiki/Dot_pitch">dot pitch</a>, '
+						+ round(metrics.density.sq, 0) + '<abbr title="pixels per square inch">ppi²</abbr>';
+
+			document.getElementById('size').textContent = isNaN(metrics.size.sq) 
+					? "" 
+					: round(2.54*metrics.size.x,2) + "cm" 
+						+ " × " + round(2.54*metrics.size.y,2) + "cm" 
+						+ " = "+ round(2.54*2.54*metrics.size.sq,2) + "cm²";
+		}
+
+		// TODO unused, incomplete
+		function parseForm() {
+			var resX = parseInt(document.getElementById('horizontal').value);
+			var resY = parseInt(document.getElementById('vertical').value);
+			var diagonal = parseFloat(document.getElementById('diagonal').value);
+
+			var ratio = document.getElementById('aspect-ratio').value.split(":");
+			var density = parseFloat(document.getElementById('density').value);
+
+			return newMetrics(newSize(resX,resY),diagonal,ratio[0]/ratio[1],newSize(0,0),density);
+		}
+
+		function do_dpi() {
+			var x = parseInt(document.getElementById('horizontal').value);
+			var y = parseInt(document.getElementById('vertical').value);
+			var diagonal = parseFloat(document.getElementById('diagonal').value); // [inch]
+
+			var resolution = newSize(x,y); // [pixel]
+			var ratio = x/y;
+			var size = calcSize(diagonal,ratio); // [inch]
+			var density = newSize(x / size.x, y / size.y); // [pixel]/[inch]
+
+			metrics = newMetrics(resolution,diagonal,ratio,size,density);
+			fillForm(metrics);
+		}
+
+
+		function save_it() {
+			var li = document.createElement("li");
+			li.innerHTML =  metrics.resolution.x + '&times;' + metrics.resolution.y + '@' + metrics.diagonal + '" = '
+			             + round(metrics.density.x,1) + '<abbr title="pixels per inch">ppi</abbr>' + ' @ ' + formatAspectRatio(metrics.ratio)
+			             + ' - Size: ' + round(2.54*metrics.size.x,2) + 'cm &times; ' + round(2.54*metrics.size.y,2) + 'cm = ' + round(2.54*2.54*metrics.size.sq,2) + 'cm&sup2;'
+			             + ' (' + round(metrics.size.x,2) + '" &times; ' + round(metrics.size.y,2) + '" = ' + round(metrics.size.sq,2) + 'in&sup2;' + ')'
+			             //+ ' at ' + '<span title="Y: ' + round(metrics.density.y,2) + '">' + round(metrics.density.x,2) + '</span>'
+			             + ', ' + round(25.4*metrics.dotpitch,4) + 'mm <a href="https://en.wikipedia.org/wiki/Dot_pitch">dot pitch</a>'
+			             + ', ' + Math.round(metrics.density.sq) + ' <abbr title="pixels per square inch">PPI&sup2;</abbr>';
+
+			document.querySelector("#saved-displays").appendChild(li);
+		}
+
+		/* ]]> */
+		</script>
+		<script type="text/javascript">
+		/* <![CDATA[ */
+
+function set_mon(x, y, diag) {
+	if (x)
+		document.getElementById('horizontal').value = x;
+	if (y)
+		document.getElementById('vertical').value = y;
+	if (diag) 
+		document.getElementById('diagonal').value = diag;
+	do_dpi();
+}
+
+/**
+* HSV to RGB color conversion
+*
+* H runs from 0 to 360 degrees
+* S and V run from 0 to 100
+*
+* Ported from the excellent java algorithm by Eugene Vishnevsky at:
+* http://www.cs.rit.edu/~ncs/color/t_convert.html
+*/
+function hsvToRgb(h, s, v) {
+    var r, g, b;
+    var i;
+    var f, p, q, t;
+     
+    // Make sure our arguments stay in-range
+    h = Math.max(0, Math.min(360, h));
+    s = Math.max(0, Math.min(100, s));
+    v = Math.max(0, Math.min(100, v));
+     
+    // We accept saturation and value arguments from 0 to 100 because that's
+    // how Photoshop represents those values. Internally, however, the
+    // saturation and value are calculated from a range of 0 to 1. We make
+    // That conversion here.
+    s /= 100;
+    v /= 100;
+     
+    if(s == 0) {
+    // Achromatic (grey)
+    r = g = b = v;
+    return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+    }
+     
+    h /= 60; // sector 0 to 5
+    i = Math.floor(h);
+    f = h - i; // factorial part of h
+    p = v * (1 - s);
+    q = v * (1 - s * f);
+    t = v * (1 - s * (1 - f));
+     
+    switch(i) {
+    case 0:
+    r = v;
+    g = t;
+    b = p;
+    break;
+     
+    case 1:
+    r = q;
+    g = v;
+    b = p;
+    break;
+     
+    case 2:
+    r = p;
+    g = v;
+    b = t;
+    break;
+     
+    case 3:
+    r = p;
+    g = q;
+    b = v;
+    break;
+     
+    case 4:
+    r = t;
+    g = p;
+    b = v;
+    break;
+     
+    default: // case 5:
+    r = v;
+    g = p;
+    b = q;
+    }
+     
+    return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+}
+
+// Links einfaerben
+function color_links() {
+	var links = document.getElementsByTagName("a");
+	var link, match, result;
+	for (i=0; i < links.length; i++) {
+		link = links[i];
+		match = link.href.match(/^javascript:set_mon\((\d+),(\d+),([\d:.]+)/);
+		if (match != null && match[2] != 0 ) { // match with y not 0
+			result = calc_dpi( match[1], match[2], match[3]);
+			// green = 100dpi or lower, red = 320dpi or higher
+			// hsv 120, hsv -60, 150 to 390 (-30)
+			var hsv = 150 - Math.min(180, Math.max(0,(result.xppi - 100) / (400-72) * 120));
+			if (hsv < 0) hsv += 360;
+			var c = hsvToRgb(hsv, 25, 100);
+			link.style.backgroundColor="rgb(" + c[0] + "," + c[1] + "," + c[2] + ")";
+		}
+	}
+}
+
+		/* ]]> */
+		</script>
+	</head>
+	<body>
+		<h1><a href="https://en.wikipedia.org/wiki/Pixels_per_inch" title="Pixels per inch">PPI</a> Calculator<span class="subhead">   —   for displays with square <a href="https://en.wikipedia.org/wiki/Pixel">pixels</a></span></h1>
+		<form onsubmit="do_dpi()" action="#">
+			<fieldset>
+				<legend>Monitor data</legend>
+				<input id="save" onclick="save_it()" value="Save" type="button"/>
+				<div id="formular">
+					<!-- TODO cleanup gui http://ux.stackexchange.com/questions/66847/combined-data-and-unit-form-field -->
+					<table>
+						<tbody>
+							<tr>
+								<td><label for="horizontal">Horizontal resolution:</label></td>
+								<td><input id="horizontal" size="4" onkeyup="do_dpi()" type="number" min="1" /> pixels</td>
+							</tr>
+							<tr>
+								<td><label for="vertical">Vertical resolution:</label></td>
+								<td><input id="vertical" size="4" " onkeyup="do_dpi()" type="number" min="1" /> pixels</td>
+							</tr>
+							<tr>
+								<td><label for="diagonal">Diagonal:</label></td>
+								<td>
+									<span>
+										<input id="diagonal" size="4" onkeyup="do_dpi()" type="number" min="0.01" step="0.01" list="common-diagonals"/>
+										<datalist id='common-diagonals'>
+											<option value='7'>
+											<option value='9.7'>
+											<option value='10.1'>
+											<option value='11.6'>
+											<option value='12.1'>
+											<option value='13.3'>
+											<option value='14'>
+											<option value='15.6'>
+											<option value='17'>
+											<option value='18.5'>
+											<option value='19'>
+											<option value='20'>
+											<option value='21.5'>
+											<option value='22'>
+											<option value='23'>
+											<option value='23.6'>
+											<option value='24'>
+											<option value='27'>
+											<option value='30'>
+											<option value='32'>
+											<option value='37'>
+											<option value='42'>
+											<option value='46'>
+											<option value='50'>
+											<option value='60'>
+											<option value='65'>
+										</datalist>
+										<unit for="diagonal">inches</unit>
+									</span>
+									<span id="metricdiag"></span>
+								</td>
+							</tr>
+							<tr>
+								<td><label for="aspect-ratio">Aspect ratio:</label></td>
+								<td><input id="aspect-ratio" size="4" onkeyup="do_dpi()" type="text"/></td>
+							</tr>
+							<tr>
+								<td><label for="density">Resolution:</label></td>
+								<td><input id="density" size="4" onkeyup="do_dpi()" type="text"/> <abbr title="pixels per inch">ppi</abbr><span id="ppi2"></span></td>
+							</tr>
+							<tr>
+								<td>Size:</td>
+								<td><span id="size"></span></td>
+							</tr>
+							<tr>
+						</tbody>
+					</table>
+				</div>
+			</fieldset>
+		</form>
+		<section id="saved-displays">
+			<h3>Saved Displays</h3>
+			<ul>
+			<!-- TOOD cleanup, align stuff (table?), store in local storage -->
+<!--
+2560x1600 @ 29.7" = 102ppi 16:10
+1200x1600 @ 19.7" = 102ppi  4:3       (~$70)
+
+
+2560x1920 @ 31.5" = 102ppi  4:3
+1200x1920 @ 22.3" = 102ppi
+-->
+		<!--table id="common-resolutions" class="data">
+			<caption></caption>
+			<tr><th>description</th><th>width [pixel]</th><th>height [pixel]</th><th>size (diagonal) [inch]</th></tr>
+			<tr><td>Apple iPhone</td><td>480</td><td>320</td><td>3.5</td></tr>
+			<tr><td></td><td></td><td></td><td></td></tr>
+			<tr><td></td><td></td><td></td><td></td></tr>
+			<tr><td></td><td></td><td></td><td></td></tr>
+			<tr><td></td><td></td><td></td><td></td></tr>
+			<tr><td></td><td></td><td></td><td></td></tr>
+			<tr><td></td><td></td><td></td><td></td></tr>
+		</table-->
+				<li>3840×2160@42.5" = 103.7<abbr title="pixels per inch">ppi</abbr> @ 16:9 --- Size: 94.09cm × 52.92cm = 4979.41cm² (37.04" × 20.84" = 771.81in²), 0.245mm <a href="https://en.wikipedia.org/wiki/Dot_pitch">dot pitch</a>, 10747 <abbr title="pixels per square inch">PPI²</abbr></li>
+				<li>2560×1600@29.7" = 101.6<abbr title="pixels per inch">ppi</abbr> @ 16:10 --- Size: 63.97cm × 39.98cm = 2557.7cm² (25.19" × 15.74" = 396.44in²), 0.2499mm <a href="https://en.wikipedia.org/wiki/Dot_pitch">dot pitch</a>, 10332 <abbr title="pixels per square inch">PPI²</abbr></li>
+				<li>3840×2160@39.6" = 111.3<abbr title="pixels per inch">ppi</abbr> @ 16:9 --- Size: 87.67cm × 49.31cm = 4323.05cm² (34.51" × 19.41" = 670.07in²), 0.2283mm <a href="https://en.wikipedia.org/wiki/Dot_pitch">dot pitch</a>, 12378 <abbr title="pixels per square inch">PPI²</abbr></li>
+				<li>2560×1600@29.715" = 101.6<abbr title="pixels per inch">ppi</abbr> @ 16:10 --- Size: 64cm × 40cm = 2560.29cm² (25.2" × 15.75" = 396.85in²), 0.25mm <a href="https://en.wikipedia.org/wiki/Dot_pitch">dot pitch</a>, 10321 <abbr title="pixels per square inch">PPI²</abbr></li>
+				<li>1920×1080@21.5" = 102.5<abbr title="pixels per inch">ppi</abbr> @ 16:9 --- Size: 47.6cm × 26.77cm = 1274.32cm² (18.74" × 10.54" = 197.52in²), 0.2479mm <a href="https://en.wikipedia.org/wiki/Dot_pitch">dot pitch</a>, 10498 <abbr title="pixels per square inch">PPI²</abbr></li>
+				<li>1680×1050@19.5" = 101.6<abbr title="pixels per inch">ppi</abbr> @ 16:10 --- Size: 42cm × 26.25cm = 1102.57cm² (16.54" × 10.33" = 170.9in²), 0.25mm <a href="https://en.wikipedia.org/wiki/Dot_pitch">dot pitch</a>, 10322 <abbr title="pixels per square inch">PPI²</abbr></li>
+				<li>1920×1200@17" = 133.2<abbr title="pixels per inch">ppi</abbr> @ 16:10 --- Size: 36.62cm × 22.89cm = 837.98cm² (14.42" × 9.01" = 129.89in²), 0.1907mm <a href="https://en.wikipedia.org/wiki/Dot_pitch">dot pitch</a>, 17738 <abbr title="pixels per square inch">PPI²</abbr></li>
+			</ul>
+		</section>
+		<section id="common-resolutions">
+			<h3>Resolutions</h3>
+			<ul>
+				<li><a href="javascript:set_mon(320,240)">320x240</a> QVGA</li>
+				<li><a href="javascript:set_mon(640,480)">640x480</a> VGA (NTSC square)</li>
+				<li><a href="javascript:set_mon(768,576)">768x576</a> PAL (square)</li>
+				<li><a href="javascript:set_mon(800,600)">800x600</a> SVGA</li>
+				<li><a href="javascript:set_mon(960,540)">960x540</a> qHD</li>
+				<li><a href="javascript:set_mon(1024,768)">1024x768</a> XGA</li>
+				<li><a href="javascript:set_mon(1280,720)">1280x720</a> HDTV 720</li>
+				<li><a href="javascript:set_mon(1280,1024)">1280x1024</a> SXGA</li>
+				<li><a href="javascript:set_mon(1366,768)">1366x768</a> HD</li>
+				<li><a href="javascript:set_mon(1400,1050)">1400x1050</a> SXGA+</li>
+				<li><a href="javascript:set_mon(1440,900)">1440x900</a> WSXGA</li>
+				<li><a href="javascript:set_mon(1600,900)">1600x900</a> HD+ 900p</li>
+				<li><a href="javascript:set_mon(1600,1200)">1600x1200</a> UXGA</li>
+				<li><a href="javascript:set_mon(1680,945)">1680x945</a> WXGA++</li>
+				<li><a href="javascript:set_mon(1680,1050)">1680x1050</a> WSXGA+</li>
+				<li><a href="javascript:set_mon(1920,1080)">1920x1080</a> HDTV 1080, FullHD, 1080p</li>
+				<li><a href="javascript:set_mon(1920,1200)">1920x1200</a> WUXGA</li>
+				<li><a href="javascript:set_mon(2048,1536)">2048x1536</a> QXGA</li>
+				<li><a href="javascript:set_mon(2560,1440)">2560x1440</a> WQHD 1440p</li>
+				<li><a href="javascript:set_mon(2560,1600)">2560x1600</a> WQXGA</li>
+				<li><a href="javascript:set_mon(3440,1440)">3440x1440</a> UWQHD</li>
+				<li><a href="javascript:set_mon(3840,2160)">3840x2160</a> <a href="https://en.wikipedia.org/wiki/4K_resolution#QFHD_.283840x2160.29">QFHD</a>, 4K, UltraHD</li>
+				<li><a href="javascript:set_mon(3840,2400)">3840x2400</a> WQUXGA</li>
+				<li><a href="javascript:set_mon(7680,4320)">7680x4320</a> <a href="https://en.wikipedia.org/wiki/8K_resolution">8K UHD</a></li>
+			</ul>
+		</section>
+		<section id="common-display-sizes">
+			<h3>Sizes</h3>
+			<ul>
+				<li><a href="javascript:set_mon(0,0,7)">7"</a></li>
+				<li><a href="javascript:set_mon(0,0,9.7)">9.7"</a></li>
+				<li><a href="javascript:set_mon(0,0,10.1)">10.1"</a></li>
+				<li><a href="javascript:set_mon(0,0,11.6)">11.6"</a></li>
+				<li><a href="javascript:set_mon(0,0,12.1)">12.1"</a></li>
+				<li><a href="javascript:set_mon(0,0,13.3)">13.3"</a></li>
+				<li><a href="javascript:set_mon(0,0,14)">14"</a></li>
+				<li><a href="javascript:set_mon(0,0,15.6)">15.6"</a></li>
+				<li><a href="javascript:set_mon(0,0,17)">17"</a></li> 
+				<li><a href="javascript:set_mon(0,0,18.5)">18.5"</a></li>
+				<li><a href="javascript:set_mon(0,0,19)">19"</a></li>
+				<li><a href="javascript:set_mon(0,0,20)">20"</a></li>
+				<li><a href="javascript:set_mon(0,0,21.5)">21.5"</a></li> 
+				<li><a href="javascript:set_mon(0,0,22)">22"</a></li>
+				<li><a href="javascript:set_mon(0,0,23)">23"</a></li>
+				<li><a href="javascript:set_mon(0,0,23.6)">23.6"</a></li>
+				<li><a href="javascript:set_mon(0,0,24)">24"</a></li>
+				<li><a href="javascript:set_mon(0,0,27)">27"</a></li>
+				<li><a href="javascript:set_mon(0,0,30)">30"</a></li>
+				<li><a href="javascript:set_mon(0,0,32)">32"</a></li>
+				<li><a href="javascript:set_mon(0,0,37)">37"</a></li> 
+				<li><a href="javascript:set_mon(0,0,42)">42"</a></li>
+				<li><a href="javascript:set_mon(0,0,46)">46"</a></li>
+				<li><a href="javascript:set_mon(0,0,50)">50"</a></li>
+				<li><a href="javascript:set_mon(0,0,60)">60"</a></li>
+				<li><a href="javascript:set_mon(0,0,65)">65"</a></li>
+			</ul>
+		</section>
+		<section id="common-screen-sizes">
+			<h3>Noteworthy and common displays of pcs, notebooks, tablets, smartphones and HMDs</h3>
+			<ul>
+				<li><a style="background-color: rgb(191, 255, 198);" href="javascript:set_mon(480,320,3.5)">480x320 @ 3.5</a> Apple iPhone</li>
+				<li><a style="background-color: rgb(212, 255, 191);" href="javascript:set_mon(800,240,3.53)">800x240 @ 3.53</a> Nintendo 3DS (3D)</li>
+				<li><a style="background-color: rgb(241, 255, 191);" href="javascript:set_mon(800,480,3)">800x480 @ 3</a> Toshiba Portégé G900</li>
+				<li><a style="background-color: rgb(191, 255, 197);" href="javascript:set_mon(800,600,6)">800x600 @ 6</a> Sony Librié</li>
+				<li><a style="background-color: rgb(223, 255, 191);" href="javascript:set_mon(854,480,3.7)">854x480 @ 3.7</a> <a href="https://en.wikipedia.org/wiki/Motorola_Droid">Motorola Droid</a></li>
+				<li><a style="background-color: rgb(206, 255, 191);" href="javascript:set_mon(960,544,5)">960x544 @ 5</a> Sony PS Vita</li>
+				<li><a style="background-color: rgb(249, 255, 191);" href="javascript:set_mon(960,640,3.5)">960x640 @ 3.5</a> Apple iPhone 4</li>
+				<li><a style="background-color: rgb(203, 255, 191);" href="javascript:set_mon(1024,600,5.6)">1024x600 @ 5.6</a> Panasonic Toughbook CF-U1</li>
+				<li><a style="background-color: rgb(191, 255, 216);" href="javascript:set_mon(1024,600,10.1)">1024x600 @ 10.1</a> Netbooks</li>
+				<li><a style="background-color: rgb(198, 255, 191);" href="javascript:set_mon(1024,768,6.4)">1024x768 @ 6.4</a> Sony PCG-U1</li>
+				<li><a style="background-color: rgb(191, 255, 199);" href="javascript:set_mon(1024,768,7.9)">1024x768 @ 7.9</a> Apple iPad Mini</li>
+				<li><a style="background-color: rgb(191, 255, 201);" href="javascript:set_mon(1024,768,8.1)">1024x768 @ 8.1</a> iRex iLiad</li>
+				<li><a style="background-color: rgb(191, 255, 211);" href="javascript:set_mon(1024,768,9.7)">1024x768 @ 9.7</a> Apple iPad</li>
+				<li><a style="background-color: rgb(247, 255, 191);" href="javascript:set_mon(1136,640,4)">1136x640 @ 4</a> Apple iPhone 5</li>
+				<li><a style="background-color: rgb(253, 255, 191);" href="javascript:set_mon(1280,720,4.3)">1280x720 @ 4.3</a> Sony Xperia S</li>
+				<li><a style="background-color: rgb(231, 255, 191);" href="javascript:set_mon(1280,800,5.3)">1280x800 @ 5.3</a> Samsung Galaxy Note</li>
+				<li><a style="background-color: rgb(204, 255, 191);" href="javascript:set_mon(1280,800,7)">1280x800 @ 7</a> Oculus Rift DK1</li>
+				<li><a style="background-color: rgb(191, 255, 213);" href="javascript:set_mon(1280,800,12)">1280x800 @ 12.1</a> </li>
+				<li><a style="background-color: rgb(191, 255, 218);" href="javascript:set_mon(1280,800,13.3)">1280x800 @ 13.3</a> Sharp Mebius MW70J</li>
+				<li><a style="background-color: rgb(191, 255, 204);" href="javascript:set_mon(1200,825,9.7)">1200x825 @ 9.7</a> Kindle DX</li>
+				<li><a style="background-color: rgb(198, 255, 191);" href="javascript:set_mon(1200,900,7.5)">1200x900 @ 7.5</a> OLPC XO-1 (b/w mode)</li>
+				<li><a style="background-color: rgb(255, 191, 223);" href="javascript:set_mon(1280,1024,0.61)">1280x1024 @ 0.61</a> <a href="http://www.imaging-resource.com/news/2012/01/27/new-evf-makes-it-clear-the-optical-viewfinders-days-are-numbered">MicroOLED microdisplay</a></li>
+				<li><a style="background-color: rgb(247, 255, 191);" href="javascript:set_mon(1334,750,4.7)">1334x750 @ 4.7</a> Apple iPhone 6</li>
+				<li><a style="background-color: rgb(191, 255, 207);" href="javascript:set_mon(1360,768,11.1)">1360x768 @ 11.1</a> Asus S6F</li>
+				<li><a style="background-color: rgb(191, 255, 209);" href="javascript:set_mon(1366,768,11.6)">1366x768 @ 11.6</a> MacBook Air 11"</li>
+				<li><a style="background-color: rgb(191, 255, 223);" href="javascript:set_mon(1366,768,15.6)">1366x768 @ 15.6</a></li>
+				<li><a style="background-color: rgb(191, 255, 205);" href="javascript:set_mon(1400,1050,12)">1400x1050 @ 12</a> Toshiba Portege M200</li>
+				<li><a style="background-color: rgb(191, 255, 212);" href="javascript:set_mon(1440,900,13.3)">1440x900 @ 13.3</a> Lenovo Thinkpad X300</li>
+				<li><a style="background-color: rgb(191, 255, 223);" href="javascript:set_mon(1440,900,19)">1440x900 @ 19</a></li>
+				<li><a style="background-color: rgb(191, 255, 218);" href="javascript:set_mon(1440,960,15.2)">1440x960 @ 15.2</a> Apple PowerBook G4</li>
+				<li><a style="background-color: rgb(207, 255, 191);" href="javascript:set_mon(1600,768,8)">1600x768 @ 8</a> Sony Vaio P-Series</li>
+				<li><a style="background-color: rgb(191, 255, 208);" href="javascript:set_mon(1600,900,13.1)">1600x900 @ 13.1</a> Sony Vaio VGN-Z11WN/B</li>
+				<li><a style="background-color: rgb(191, 255, 221);" href="javascript:set_mon(1600,900,17.3)">1600x900 @ 17.3</a></li>
+				<li><a style="background-color: rgb(191, 255, 221);" href="javascript:set_mon(1600,1200,19)">1600x1200 @ 19</a> Iiyama AU4831D</li>
+				<li><a style="background-color: rgb(191, 255, 221);" href="javascript:set_mon(1680,945,18.4)">1680x945 @ 18.4</a> Sony Vaio VGN-AW11M/H</li>
+				<li><a style="background-color: rgb(191, 255, 212);" href="javascript:set_mon(1680,1050,15.4)">1680x1050 @ 15.4</a> Sony Vaio FS92</li>
+				<li><a style="background-color: rgb(191, 255, 209);" href="javascript:set_mon(1792,768,14.4)">1792x768 @ 14.4</a> Toshiba Satellite U840W</li>
+				<li><a style="background-color: rgb(255, 191, 223);" href="javascript:set_mon(1920,1080,0.74)">1920x1080 @ 0.74</a> <a href="http://www.siliconmicrodisplay.com/st1080.html">Silicon Micro Display ST1080</a></li>
+				<li><a style="background-color: rgb(255, 207, 191);" href="javascript:set_mon(1920,1080,4.7)">1920x1080 @ 4.7</a> HTC One</li>
+				<li><a style="background-color: rgb(255, 218, 191);" href="javascript:set_mon(1920,1080,5)">1920x1080 @ 5</a></li>
+				<li><a style="background-color: rgb(255, 234, 191);" href="javascript:set_mon(1920,1080,5.5)">1920x1080 @ 5.5</a> Apple iPhone 6 Plus</li>
+				<li><a style="background-color: rgb(194, 255, 191);" href="javascript:set_mon(1920,1080,11.6)">1920x1080 @ 11.6</a> Asus Zenbook UX21A</li>
+				<li><a style="background-color: rgb(207, 255, 191);" href="javascript:set_mon(1920,1152,10.1)">1920x1152 @ 10.1</a> Lenovo IdeaTab K2</li>
+				<li><a style="background-color: rgb(246, 255, 191);" href="javascript:set_mon(1920,1200,7)">1920x1200 @ 7</a> Google Nexus 7 (2013)</li>
+				<li><a style="background-color: rgb(208, 255, 191);" href="javascript:set_mon(1920,1200,10.1)">1920x1200 @ 10.1</a> Acer Iconia Tab A700</li>
+				<li><a style="background-color: rgb(191, 255, 205);" href="javascript:set_mon(1920,1200,15.4)">1920x1200 @ 15.4</a> IBM Thinkpad T61p</li>
+				<li><a style="background-color: rgb(191, 255, 223);" href="javascript:set_mon(1920,1200,24)">1920x1200 @ 24</a></li>
+				<li><a style="background-color: rgb(191, 255, 222);" href="javascript:set_mon(1920,1920,26.5)">1920x1920 @ 26.5</a> Eizo EV2730Q</li>
+				<li><a style="background-color: rgb(191, 255, 222);" href="javascript:set_mon(2048,1152,23)">2048x1152 @ 23</a> Samsung 2343BW</li>
+				<li><a style="background-color: rgb(255, 191, 223);" href="javascript:set_mon(2048,1536,0.83)">2048x1536 @ 0.83</a> Forth Dimension QXGA-R9 microdisplay</li>
+				<li><a style="background-color: rgb(246, 255, 191);" href="javascript:set_mon(2048,1536,7.9)">2048x1536 @ 7.9</a> iPad mini w/ Retina display</li>
+				<li><a style="background-color: rgb(223, 255, 191);" href="javascript:set_mon(2048,1536,9.7)">2048x1536 @ 9.7</a> iPad (3rd gen.)</li>
+				<li><a style="background-color: rgb(191, 255, 196);" href="javascript:set_mon(2048,1536,15)">2048x1536 @ 15</a> NEC Versa Pro NX VA20S/AE</li>
+				<li><a style="background-color: rgb(191, 255, 214);" href="javascript:set_mon(2048,1536,20.8)">2048x1536 @ 20.8</a> Iiyama ProLite H530-B</li>
+				<li><a style="background-color: rgb(209, 255, 191);" href="javascript:set_mon(2304,1440,12)">2304x1440 @ 12</a> MacBook 12"</li>
+				<li><a style="background-color: rgb(191, 255, 219);" href="javascript:set_mon(2560,1080,25)">2560x1080 @ 25</a> LG 25UM65-P</li>
+				<li><a style="background-color: rgb(255, 191, 217);" href="javascript:set_mon(2560,1440,5.1)">2560x1440 @ 5.1</a> Samsung Galaxy S5 Prime</li>
+				<li><a style="background-color: rgb(219, 255, 191);" href="javascript:set_mon(2560,1440,11.6)">2560x1440 @ 11.6</a> Dell XPS 11</li>
+				<li><a style="background-color: rgb(191, 255, 220);" href="javascript:set_mon(2560,1440,27)">2560x1440 @ 27</a> Apple iMac 27"</li>
+				<li><a style="background-color: rgb(255, 191, 204);" href="javascript:set_mon(2560,1536,5.5)">2560x1536 @ 5.5</a> Meizu MX4G</li>
+				<li><a style="background-color: rgb(255, 197, 191);" href="javascript:set_mon(2560,1600,6.1)">2560x1600 @ 6.1</a> Sharp IGZO panel prototype</li>
+				<li><a style="background-color: rgb(252, 255, 191);" href="javascript:set_mon(2560,1600,8.9)">2560x1600 @ 8.9</a> Kindle Fire HDX 8.9</li>
+				<li><a style="background-color: rgb(237, 255, 191);" href="javascript:set_mon(2560,1600,10.055)">2560x1600 @ 10</a> Google Nexus 10</li>
+				<li><a style="background-color: rgb(209, 255, 191);" href="javascript:set_mon(2560,1600,13.3)">2560x1600 @ 13.3</a> Retina MacBook Pro 13"</li>
+				<li><a style="background-color: rgb(213, 255, 191);" href="javascript:set_mon(2560,1700,12.85)">2560x1700 @ 12.85</a> Chromebook Pixel</li>
+				<li><a style="background-color: rgb(191, 255, 223);" href="javascript:set_mon(2560,1600,30)">2560x1600 @ 30</a></li>
+				<li><a style="background-color: rgb(240, 255, 191);" href="javascript:set_mon(2560,1800,10.2)">2560x1800 @ 10.2</a> Google Pixel C</li>
+				<li><a style="background-color: rgb(191, 255, 199);" href="javascript:set_mon(2560,2048,20.1)">2560x2048 @ 20.1</a> <a href="http://www.necdisplay.com/p/medical%20-diagnostic%20-displays/md205mg-1?type=support">NEC MD205MG-1</a></li>
+				<li><a style="background-color: rgb(223, 255, 191);" href="javascript:set_mon(2732,2048,12.9)">2732x2048 @ 12.9</a> Apple iPad Pro</li>
+				<li><a style="background-color: rgb(224, 255, 191);" href="javascript:set_mon(2736,1824,12.3)">2736x1824 @ 12.3</a> Microsoft Surface Pro 4</li>
+				<li><a style="background-color: rgb(203, 255, 191);" href="javascript:set_mon(2880,1620,15.6)">2880x1620 @ 15.6</a> ASUS UX51VZ</li>
+				<li><a style="background-color: rgb(206, 255, 191);" href="javascript:set_mon(2880,1800,15.4)">2880x1800 @ 15.4</a> Retina MacBook Pro 15"</li>
+				<li><a style="background-color: rgb(224, 255, 191);" href="javascript:set_mon(3000,2000,13.5)">3000x2000 @ 13.5</a> Microsoft Surface Book</li>
+				<li><a style="background-color: rgb(228, 255, 191);" href="javascript:set_mon(3200,1800,13.3)">3200x1800 @ 13.3</a> Samsung Ativ Q</li>
+				<li><a style="background-color: rgb(191, 255, 213);" href="javascript:set_mon(3280,2048,30.4)">3280x2048 @ 30.4</a> <a href="http://www.barco.com/en/healthcare/product/1909">Coronis Fusion 6MP DL</a></li>
+				<li><a style="background-color: rgb(191, 255, 212);" href="javascript:set_mon(3440,1440,29)">3440x1440 @ 29</a> LG UM95</li>
+				<li><a style="background-color: rgb(255, 191, 223);" href="javascript:set_mon(3840,2160,5.5)">3840x2160 @ 5.5</a> Sony Z5 Premium</li>
+				<li><a style="background-color: rgb(230, 255, 191);" href="javascript:set_mon(3840,2160,15.6)">3840x2160 @ 15.6</a></li>
+				<li><a style="background-color: rgb(193, 255, 191);" href="javascript:set_mon(3840,2160,23.6)">3840x2160 @ 23.6</a> Acer K242HQKbmjdp</li>
+				<li><a style="background-color: rgb(191, 255, 201);" href="javascript:set_mon(3840,2160,28)">3840x2160 @ 28</a> Lenovo ThinkVision 28</li>
+				<li><a style="background-color: rgb(191, 255, 208);" href="javascript:set_mon(3840,2160,31.5)">3840x2160 @ 31.5</a> Asus PQ321</li>
+				<li><a style="background-color: rgb(200, 255, 191);" href="javascript:set_mon(3840,2400,22.2)">3840x2400 @ 22.2</a> <a href="https://en.wikipedia.org/wiki/IBM_T220/T221_LCD_monitors#IBM_T221">IBM T221</a></li>
+				<li><a style="background-color: rgb(210, 255, 191);" href="javascript:set_mon(3840,2560,20)">3840x2560 @ 20</a> Panasonic Toughpad 4K UT-MB4</li>
+				<li><a style="background-color: rgb(191, 255, 204);" href="javascript:set_mon(4096,2160,31)">4096x2160 @ 31</a> LG 31MU95</li>
+				<li><a style="background-color: rgb(191, 255, 213);" href="javascript:set_mon(4096,2160,36.4)">4096x2160 @ 36.4</a> <a href="http://www.eizo.com/na/products/duravision/fdh3601/">Eizo FDH3601</a></li>
+				<li><a style="background-color: rgb(205, 255, 191);" href="javascript:set_mon(4096,2304,21.5)">4096x2304 @ 21.5</a> Retina iMac 21.5"</li>
+				<li><a style="background-color: rgb(191, 255, 223);" href="javascript:set_mon(5120,2160,82)">5120x2160 @ 82</a> Samsung UE82S9W</li>
+				<li><a style="background-color: rgb(205, 255, 191);" href="javascript:set_mon(5120,2880,27)">5120x2880 @ 27</a> Dell UP2715K, Retina iMac 27"</li>
+				<li><a style="background-color: rgb(255, 192, 191);" href="javascript:set_mon(7680,4320,17.3)">7680x4320 @ 17.3</a> JDI LCD prototype</li>
+				<li><a style="background-color: rgb(229, 255, 191);" href="javascript:set_mon(7680,4320,31.5)">7680x4320 @ 31.5</a> LG.Display prototype</li>
+				<li><a style="background-color: rgb(191, 255, 222);" href="javascript:set_mon(7680,4320,85)">7680x4320 @ 85</a> Sharp 8K LCD prototype</li>
+				<li><a style="background-color: rgb(191, 255, 209);" href="javascript:set_mon(10240,4320,82)">10240x4320 @ 82</a> Boe LCD prototype</li>
+			</ul>
+		</section>
+		<footer>
+			<span>Inspired by <a href="https://www.sven.de/dpi/">sven's dpi calc</a></span>
+			<span style="align: right;">© 2016 Claude Nobs. All rights reserved. 
+		</footer>
+	</body>
+</html>
